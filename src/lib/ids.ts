@@ -11,7 +11,7 @@ export function slugify(value: string): string {
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '') || 'route'
+    .replace(/^-|-$/g, '') || 'flow'
 }
 
 export function mockApiKeySecret(): string {

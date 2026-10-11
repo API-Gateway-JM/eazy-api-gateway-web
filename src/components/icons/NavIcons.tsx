@@ -31,7 +31,7 @@ function Svg({
   )
 }
 
-/** Distinctive brand mark — gateway arch + route node, accent-filled. */
+/** Distinctive brand mark — gateway arch + flow node, accent-filled. */
 export function BrandMark({ className }: IconProps) {
   return (
     <svg
@@ -95,7 +95,7 @@ export function IconDashboard(props: IconProps) {
   )
 }
 
-export function IconWorkspaces(props: IconProps) {
+export function IconWebhooks(props: IconProps) {
   return (
     <Svg {...props}>
       <path d="M4 8.5 12 4l8 4.5v9L12 22l-8-4.5v-9Z" />
@@ -105,7 +105,18 @@ export function IconWorkspaces(props: IconProps) {
   )
 }
 
-export function IconProviders(props: IconProps) {
+export function IconOperators(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="5" r="2.2" />
+      <circle cx="6" cy="19" r="2.2" />
+      <circle cx="18" cy="19" r="2.2" />
+      <path d="M12 7.5v3.5m0 0-4.7 5.2M12 11l4.7 5.2" />
+    </Svg>
+  )
+}
+
+export function IconConnections(props: IconProps) {
   return (
     <Svg {...props}>
       <circle cx="6.5" cy="12" r="2.5" />

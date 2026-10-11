@@ -16,7 +16,7 @@ export function SettingsPage() {
       <div className="card stack">
         <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Gateway base URL</h2>
         <p className="muted">
-          Future local gateway base. Clients call this URL plus a route path with one API key.
+          Future local gateway base. Clients call this URL with one API key.
         </p>
         <div className="field">
           <input
@@ -57,8 +57,8 @@ export function SettingsPage() {
           <div>
             <h3>Restore default settings</h3>
             <p className="muted" style={{ fontSize: '0.85rem' }}>
-              Clears local demo changes and restores the seeded Demo App workspace, keys, and
-              routes. This cannot be undone.
+              Clears local demo changes and restores the seeded Demo Webhook, keys, and
+              flows. This cannot be undone.
             </p>
           </div>
           <button type="button" className="btn btn-danger-outline" onClick={resetDemoData}>

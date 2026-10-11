@@ -3,19 +3,19 @@ import { useParams } from 'react-router-dom'
 import { useMockStore } from '@/store/MockStore'
 import type { AllowedClient } from '@/types'
 
-export function WorkspaceClientsPage() {
-  const { workspaceId = '' } = useParams()
-  const { getWorkspace, addAllowedClient, removeAllowedClient } = useMockStore()
-  const ws = getWorkspace(workspaceId)
+export function WebhookClientsPage() {
+  const { webhookId = '' } = useParams()
+  const { getWebhook, addAllowedClient, removeAllowedClient } = useMockStore()
+  const wh = getWebhook(webhookId)
   const [type, setType] = useState<AllowedClient['type']>('domain')
   const [value, setValue] = useState('')
 
-  if (!ws) return null
+  if (!wh) return null
 
   function onAdd(e: FormEvent) {
     e.preventDefault()
     if (!value.trim()) return
-    addAllowedClient(workspaceId, { type, value: value.trim() })
+    addAllowedClient(webhookId, { type, value: value.trim() })
     setValue('')
   }
 
@@ -24,7 +24,7 @@ export function WorkspaceClientsPage() {
       <div className="page-header" style={{ marginBottom: 0 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: '1.15rem' }}>Allowed Clients</h2>
-          <p className="muted">Domains and IPs permitted to call this workspace’s managed APIs.</p>
+          <p className="muted">Domains and IPs permitted to call this webhook’s managed APIs.</p>
         </div>
       </div>
 
@@ -49,7 +49,7 @@ export function WorkspaceClientsPage() {
         </button>
       </form>
 
-      {ws.allowedClients.length === 0 ? (
+      {wh.allowedClients.length === 0 ? (
         <div className="card empty">
           <p>No allowed clients yet. Add a domain or IP to restrict traffic.</p>
         </div>
@@ -64,7 +64,7 @@ export function WorkspaceClientsPage() {
               </tr>
             </thead>
             <tbody>
-              {ws.allowedClients.map((c) => (
+              {wh.allowedClients.map((c) => (
                 <tr key={c.id}>
                   <td>
                     <span className="badge">{c.type}</span>
@@ -74,7 +74,7 @@ export function WorkspaceClientsPage() {
                     <button
                       type="button"
                       className="btn btn-sm btn-danger"
-                      onClick={() => removeAllowedClient(workspaceId, c.id)}
+                      onClick={() => removeAllowedClient(webhookId, c.id)}
                     >
                       Remove
                     </button>

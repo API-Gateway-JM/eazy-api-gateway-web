@@ -3,37 +3,37 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { GenericHttpFields } from '@/components/GenericHttpFields'
 import { createDefaultHttpConfig } from '@/lib/httpConfig'
 import { useMockStore } from '@/store/MockStore'
-import type { ExternalProvider, GenericHttpConfig } from '@/types'
+import type { ExternalHttpConnection, GenericHttpConfig } from '@/types'
 
 type Tab = 'platform' | 'custom'
-type CustomEditor = { type: 'create' } | { type: 'edit'; provider: ExternalProvider } | null
+type ConnectionEditor = { type: 'create' } | { type: 'edit'; connection: ExternalHttpConnection } | null
 
-export function ProvidersPage() {
+export function HttpConnectionsPage() {
   const {
     state,
-    createCustomProvider,
-    updateCustomProvider,
-    deleteCustomProvider,
-    accountsForProvider,
+    createCustomConnection,
+    updateCustomConnection,
+    deleteCustomConnection,
+    accountsForConnection,
     pushToast,
   } = useMockStore()
   const [searchParams, setSearchParams] = useSearchParams()
   const tab: Tab = searchParams.get('tab') === 'custom' ? 'custom' : 'platform'
 
-  const [editor, setEditor] = useState<CustomEditor>(null)
+  const [editor, setEditor] = useState<ConnectionEditor>(null)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [http, setHttp] = useState<GenericHttpConfig>(createDefaultHttpConfig())
   const [revealSecret, setRevealSecret] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
 
-  const platformProviders = useMemo(
-    () => state.providers.filter((p) => p.origin === 'platform'),
-    [state.providers],
+  const platformConnections = useMemo(
+    () => state.connections.filter((p) => p.origin === 'platform'),
+    [state.connections],
   )
-  const customProviders = useMemo(
-    () => state.providers.filter((p) => p.origin === 'custom'),
-    [state.providers],
+  const customConnections = useMemo(
+    () => state.connections.filter((p) => p.origin === 'custom'),
+    [state.connections],
   )
 
   function setTab(next: Tab) {
@@ -48,12 +48,12 @@ export function ProvidersPage() {
     setEditor({ type: 'create' })
   }
 
-  function openEdit(provider: ExternalProvider) {
-    setName(provider.name)
-    setDescription(provider.description ?? '')
-    setHttp(provider.http ? { ...provider.http } : createDefaultHttpConfig())
+  function openEdit(connection: ExternalHttpConnection) {
+    setName(connection.name)
+    setDescription(connection.description ?? '')
+    setHttp(connection.http ? { ...connection.http } : createDefaultHttpConfig())
     setRevealSecret(false)
-    setEditor({ type: 'edit', provider })
+    setEditor({ type: 'edit', connection })
   }
 
   function closeEditor() {
@@ -63,34 +63,34 @@ export function ProvidersPage() {
   function onSubmitCustom(e: FormEvent) {
     e.preventDefault()
     if (editor?.type === 'create') {
-      const result = createCustomProvider({ name, description, http })
+      const result = createCustomConnection({ name, description, http })
       if ('error' in result) {
         pushToast('danger', result.error)
         return
       }
-      pushToast('success', `Provider “${result.name}” created.`)
+      pushToast('success', `Connection “${result.name}” created.`)
       closeEditor()
       setTab('custom')
       return
     }
     if (editor?.type === 'edit') {
-      const result = updateCustomProvider(editor.provider.id, { name, description, http })
+      const result = updateCustomConnection(editor.connection.id, { name, description, http })
       if (result.error) {
         pushToast('danger', result.error)
         return
       }
-      pushToast('success', 'Provider updated.')
+      pushToast('success', 'Connection updated.')
       closeEditor()
     }
   }
 
   function onDeleteCustom(id: string) {
-    const result = deleteCustomProvider(id)
+    const result = deleteCustomConnection(id)
     if (result.error) {
       pushToast('danger', result.error)
       return
     }
-    pushToast('success', 'Custom provider deleted. Route bindings removed.')
+    pushToast('success', 'Custom connection deleted.')
     setDeleteConfirmId(null)
   }
 
@@ -98,20 +98,20 @@ export function ProvidersPage() {
     <div className="stack">
       <div className="page-header">
         <div>
-          <h1>Providers</h1>
+          <h1>HTTP Connections</h1>
           <p>
-            Browse platform connectors or define custom HTTP providers. API-key credentials for
-            platform services are managed on each provider’s accounts page.
+            Browse platform connectors or define custom HTTP connections. API-key credentials for
+            platform services are managed on each connection’s accounts page.
           </p>
         </div>
         {tab === 'custom' ? (
           <button type="button" className="btn btn-primary" onClick={openCreate}>
-            New custom provider
+            New custom connection
           </button>
         ) : null}
       </div>
 
-      <div className="tabs" role="tablist" aria-label="Provider catalogs">
+      <div className="tabs" role="tablist" aria-label="Connection catalogs">
         <button
           type="button"
           role="tab"
@@ -121,7 +121,7 @@ export function ProvidersPage() {
         >
           Platform
           <span className="badge" style={{ marginLeft: 6 }}>
-            {platformProviders.length}
+            {platformConnections.length}
           </span>
         </button>
         <button
@@ -133,7 +133,7 @@ export function ProvidersPage() {
         >
           Custom
           <span className="badge" style={{ marginLeft: 6 }}>
-            {customProviders.length}
+            {customConnections.length}
           </span>
         </button>
       </div>
@@ -141,10 +141,10 @@ export function ProvidersPage() {
       {tab === 'platform' ? (
         <div className="stack">
           <p className="field-hint" style={{ margin: 0 }}>
-            Built-in connectors. Open a provider to connect named accounts and reuse them on routes.
+            Built-in connectors. Open a connection to connect named accounts and reuse them on flows.
           </p>
-          {platformProviders.map((p) => {
-            const accountCount = accountsForProvider(p.id).length
+          {platformConnections.map((p) => {
+            const accountCount = accountsForConnection(p.id).length
             return (
               <div key={p.id} className="card">
                 <div
@@ -164,7 +164,7 @@ export function ProvidersPage() {
                       </p>
                     ) : (
                       <p className="field-hint" style={{ marginTop: '0.45rem' }}>
-                        No upstream API key required — attach directly on a route.
+                        No upstream API key required — attach directly on a flow.
                       </p>
                     )}
                   </div>
@@ -183,7 +183,7 @@ export function ProvidersPage() {
                     </div>
                     {p.requiresApiKey ? (
                       <Link
-                        to={`/providers/${p.id}/accounts`}
+                        to={`/connections/${p.id}/accounts`}
                         className="btn btn-sm btn-primary"
                       >
                         Manage accounts
@@ -198,12 +198,12 @@ export function ProvidersPage() {
       ) : (
         <div className="stack">
           <p className="field-hint" style={{ margin: 0 }}>
-            Your HTTP recipes (URL, method, auth, headers). Auth secrets live on the provider, not as
+            Your HTTP recipes (URL, method, auth, headers). Auth secrets live on the connection, not as
             separate accounts.
           </p>
-          {customProviders.length === 0 ? (
+          {customConnections.length === 0 ? (
             <div className="card empty">
-              <p>No custom providers yet.</p>
+              <p>No custom connections yet.</p>
               <button
                 type="button"
                 className="btn btn-primary"
@@ -214,7 +214,7 @@ export function ProvidersPage() {
               </button>
             </div>
           ) : (
-            customProviders.map((p) => (
+            customConnections.map((p) => (
               <div key={p.id} className="card">
                 <div
                   className="row"
@@ -257,11 +257,11 @@ export function ProvidersPage() {
             className="modal modal-wide"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="provider-editor-title"
+            aria-labelledby="connection-editor-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 id="provider-editor-title">
-              {editor.type === 'create' ? 'New custom provider' : 'Edit custom provider'}
+            <h2 id="connection-editor-title">
+              {editor.type === 'create' ? 'New custom connection' : 'Edit custom connection'}
             </h2>
             <form className="stack" onSubmit={onSubmitCustom}>
               <div className="field">
@@ -284,7 +284,7 @@ export function ProvidersPage() {
                 />
               </div>
               <GenericHttpFields
-                idPrefix={editor.type === 'edit' ? editor.provider.id : 'new'}
+                idPrefix={editor.type === 'edit' ? editor.connection.id : 'new'}
                 value={http}
                 onChange={setHttp}
                 revealSecret={revealSecret}
@@ -311,9 +311,9 @@ export function ProvidersPage() {
             aria-modal="true"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2>Delete custom provider?</h2>
+            <h2>Delete custom connection?</h2>
             <p className="muted">
-              This removes the provider and any route bindings that use it. This cannot be undone.
+              This removes the connection from the catalog. Flow nodes that used it will show a missing connection until you pick another.
             </p>
             <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
               <button type="button" className="btn" onClick={() => setDeleteConfirmId(null)}>
@@ -331,9 +331,9 @@ export function ProvidersPage() {
         </div>
       ) : null}
 
-      {tab === 'custom' && customProviders.length > 0 ? (
+      {tab === 'custom' && customConnections.length > 0 ? (
         <p className="field-hint">
-          Attach custom providers from a <Link to="/workspaces">workspace</Link> route editor.
+          Attach custom connections from a <Link to="/webhooks">webhook</Link> flow editor.
         </p>
       ) : null}
     </div>

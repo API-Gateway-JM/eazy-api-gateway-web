@@ -4,10 +4,11 @@ import {
   IconDashboard,
   IconMenu,
   IconPanelLeft,
-  IconProviders,
+  IconConnections,
+  IconOperators,
   IconSettings,
   IconUpgrade,
-  IconWorkspaces,
+  IconWebhooks,
 } from '@/components/icons/NavIcons'
 import { ToastHost } from '@/components/ToastHost'
 import { useMockStore } from '@/store/MockStore'
@@ -20,8 +21,9 @@ const NAV: {
   icon: ReactNode
 }[] = [
   { to: '/', label: 'Dashboard', end: true, icon: <IconDashboard /> },
-  { to: '/workspaces', label: 'API Workspaces', icon: <IconWorkspaces /> },
-  { to: '/providers', label: 'Providers', icon: <IconProviders /> },
+  { to: '/webhooks', label: 'Webhooks', icon: <IconWebhooks /> },
+  { to: '/connections', label: 'HTTP Connections', icon: <IconConnections /> },
+  { to: '/operators', label: 'Operators', icon: <IconOperators /> },
   { to: '/settings', label: 'Settings', icon: <IconSettings /> },
 ]
 

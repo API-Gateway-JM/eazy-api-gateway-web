@@ -11,20 +11,67 @@ export type AllowedClient = {
   value: string
 }
 
-export type ApiWorkspace = {
+export type SchemaFieldType = 'string' | 'number' | 'boolean' | 'object' | 'array'
+
+export type SchemaField = {
+  id: string
+  name: string
+  type: SchemaFieldType
+  /** Present when type is array. */
+  itemType?: 'string' | 'number' | 'boolean' | 'object'
+  children?: SchemaField[]
+}
+
+/** A pointer at a node output, or at a flow's published success output. */
+export type ValueRef =
+  | { kind: 'literal'; value: string | number | boolean | null }
+  | { kind: 'field'; nodeId: string; path: string[] }
+  | { kind: 'flow'; flowId: string; path: string[] }
+
+export type MappedField = {
+  id: string
+  name: string
+  value: MappedValue
+}
+
+export type MappedValue =
+  | { kind: 'literal'; value: string | number | boolean | null }
+  | { kind: 'field'; nodeId: string; path: string[] }
+  | { kind: 'flow'; flowId: string; path: string[] }
+  | { kind: 'object'; fields: MappedField[] }
+
+export type WebhookInput = {
+  methods: HttpMethod[]
+  queryParams: HttpKeyValue[]
+  headers: HttpKeyValue[]
+  bodyMode: 'passthrough' | 'json'
+  bodyFields: SchemaField[]
+}
+
+export type WebhookResponse = {
+  /** Flow whose success output feeds the public response. */
+  sourceFlowId: string | null
+  contentType: string
+  headers: HttpKeyValue[]
+  body: MappedValue
+}
+
+export type ApiWebhook = {
   id: string
   name: string
   description?: string
   allowedClients: AllowedClient[]
   apiKeyIds: string[]
-  routeIds: string[]
+  flowIds: string[]
+  input: WebhookInput
+  response: WebhookResponse
   createdAt: string
   updatedAt: string
 }
 
 export type ApiKey = {
   id: string
-  apiWorkspaceId: string
+  apiWebhookId: string
   name: string
   key: string
   createdAt: string
@@ -33,9 +80,9 @@ export type ApiKey = {
   status: 'active' | 'revoked'
 }
 
-export type ProviderKind = 'http' | 'translation' | 'llm' | 'custom'
+export type ConnectionKind = 'http' | 'translation' | 'llm' | 'custom'
 
-export type ProviderOrigin = 'platform' | 'custom'
+export type ConnectionOrigin = 'platform' | 'custom'
 
 export type QuotaPeriod = 'minute' | 'hour' | 'day' | 'month'
 
@@ -49,70 +96,151 @@ export type HttpKeyValue = {
   value: string
 }
 
-/** HTTP recipe for custom providers (user-maintained). */
+/** HTTP recipe for custom connections (user-maintained). */
 export type GenericHttpConfig = {
   url: string
   method: HttpMethod
   authType: HttpAuthType
-  /** Header name when authType is api_key_header (e.g. X-Api-Key). */
   apiKeyHeaderName?: string
-  /** Username when authType is basic. */
   basicUsername?: string
-  /** Bearer token, API key value, or basic password depending on authType. */
   authSecret?: string
   headers: HttpKeyValue[]
   queryParams: HttpKeyValue[]
 }
 
-export type ExternalProvider = {
+export type ExternalHttpConnection = {
   id: string
   name: string
-  kind: ProviderKind
+  kind: ConnectionKind
   description?: string
   requiresApiKey: boolean
   isSelfHosted: boolean
   credentialLabel?: string
-  origin: ProviderOrigin
-  /** Present when origin is custom. */
+  origin: ConnectionOrigin
   http?: GenericHttpConfig
   createdAt?: string
   updatedAt?: string
 }
 
-/**
- * Named credential for a platform provider (API key auth).
- * Reusable across routes; multiple accounts per provider are allowed.
- */
-export type ProviderAccount = {
+export type ConnectionAccount = {
   id: string
-  providerId: string
+  connectionId: string
   name: string
   apiKey: string
   createdAt: string
   updatedAt: string
 }
 
-export type RouteProviderBinding = {
+export type OperatorKind = 'regex' | 'text'
+
+export type RegexOperatorConfig = {
+  pattern: string
+  flags: string
+  mode: 'test' | 'extract' | 'replace'
+  replacement?: string
+}
+
+export type TextOperatorConfig = {
+  operation: 'html-to-text' | 'uppercase' | 'lowercase' | 'trim' | 'truncate'
+  maxLength?: number
+}
+
+export type OperatorDef = {
   id: string
-  providerId: string
-  /** Required when the provider requires an API key. */
+  name: string
+  kind: OperatorKind
+  description?: string
+  config: RegexOperatorConfig | TextOperatorConfig
+  createdAt: string
+  updatedAt: string
+}
+
+export type OperatorUsage = {
+  flowId: string
+  flowName: string
+  nodeId: string
+}
+
+export type FlowPosition = { x: number; y: number }
+
+export type StartNode = {
+  id: string
+  type: 'start'
+  position: FlowPosition
+  input: { from: 'webhook' } | { from: 'flow'; flowId: string }
+}
+
+export type OperatorNode = {
+  id: string
+  type: 'operator'
+  position: FlowPosition
+  operatorId: string
+  /** Text (or other value) this operator reads. */
+  input: ValueRef | null
+}
+
+export type HttpNode = {
+  id: string
+  type: 'http'
+  position: FlowPosition
+  name: string
+  connectionId: string
   accountId?: string | null
-  priority: number
   enabled: boolean
-  isDefault: boolean
-  /** null = unlimited */
   maxRequests: number | null
   quotaPeriod: QuotaPeriod
   usedRequests: number
+  requestBody: MappedValue
+  responseBody: SchemaField[]
 }
 
-export type ApiRoute = {
+export type CompareOp = 'eq' | 'neq' | 'contains' | 'empty' | 'gt' | 'lt'
+
+export type ConditionRule = {
+  id: string
+  left: ValueRef
+  cmp: CompareOp
+  right?: ValueRef
+}
+
+export type ConditionGroup = {
+  op: 'and' | 'or'
+  rules: ConditionRule[]
+}
+
+export type ConditionNode = {
+  id: string
+  type: 'condition'
+  position: FlowPosition
+  name: string
+  when: ConditionGroup
+}
+
+export type EndNode = {
+  id: string
+  type: 'end'
+  position: FlowPosition
+  role: 'success' | 'error'
+  status: number
+  body: MappedValue
+}
+
+export type FlowNode = StartNode | OperatorNode | HttpNode | ConditionNode | EndNode
+
+export type FlowEdge = {
+  id: string
+  source: string
+  target: string
+  /** Set when the source is a condition. */
+  when?: 'true' | 'false'
+}
+
+export type HttpFlow = {
   id: string
   name: string
-  slug: string
-  path: string
   description?: string
-  providers: RouteProviderBinding[]
+  nodes: FlowNode[]
+  edges: FlowEdge[]
   createdAt: string
   updatedAt: string
 }
@@ -123,22 +251,24 @@ export type ActivityEvent = {
   kind:
     | 'key_created'
     | 'key_rotated'
-    | 'route_updated'
+    | 'flow_updated'
     | 'fallback'
-    | 'workspace'
+    | 'webhook'
     | 'client'
-    | 'provider'
+    | 'connection'
     | 'account'
+    | 'operator'
   message: string
 }
 
 export type AppState = {
   operator: Operator | null
-  workspaces: ApiWorkspace[]
+  webhooks: ApiWebhook[]
   apiKeys: ApiKey[]
-  routes: ApiRoute[]
-  providers: ExternalProvider[]
-  accounts: ProviderAccount[]
+  flows: HttpFlow[]
+  connections: ExternalHttpConnection[]
+  accounts: ConnectionAccount[]
+  operators: OperatorDef[]
   activity: ActivityEvent[]
   mockBaseUrl: string
   theme: 'light' | 'dark'
@@ -147,7 +277,10 @@ export type AppState = {
 
 export type ExpirationOption = 'never' | '30' | '90' | '180' | '365'
 
-export const COMMUNITY_MAX_WORKSPACES = 2
+export const COMMUNITY_MAX_WEBHOOKS = 2
 export const COMMUNITY_MAX_KEYS = 2
-export const COMMUNITY_MAX_ROUTES = 3
-export const STORAGE_KEY = 'eazy-api-gateway-demo-v7'
+export const COMMUNITY_MAX_FLOWS = 3
+export const STORAGE_KEY = 'eazy-api-gateway-demo-v11'
+
+export const FLOW_FORMAT = 'eazy.flow'
+export const FLOW_FORMAT_VERSION = 1

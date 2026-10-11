@@ -6,8 +6,8 @@ import type { AllowedClient, ApiKey } from '@/types'
 
 type ClientDraft = { type: AllowedClient['type']; value: string }
 
-export function WorkspaceCreatePage() {
-  const { createWorkspace } = useMockStore()
+export function WebhookCreatePage() {
+  const { createWebhook } = useMockStore()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [clients, setClients] = useState<ClientDraft[]>([
@@ -15,12 +15,12 @@ export function WorkspaceCreatePage() {
   ])
   const [error, setError] = useState('')
   const [createdKey, setCreatedKey] = useState<ApiKey | null>(null)
-  const [createdWsId, setCreatedWsId] = useState<string | null>(null)
+  const [createdWhId, setCreatedWhId] = useState<string | null>(null)
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
-    const result = createWorkspace({
+    const result = createWebhook({
       name,
       description,
       allowedClients: clients
@@ -29,22 +29,22 @@ export function WorkspaceCreatePage() {
     })
     if ('error' in result) {
       if (result.error === 'community_limit') {
-        setError('Portable Community limit — upgrade for more workspaces.')
+        setError('Portable Community limit — upgrade for more webhooks.')
       } else {
         setError(result.error)
       }
       return
     }
     setCreatedKey(result.primaryKey)
-    setCreatedWsId(result.workspace.id)
+    setCreatedWhId(result.webhook.id)
   }
 
-  if (createdKey && createdWsId) {
+  if (createdKey && createdWhId) {
     return (
       <div className="stack" style={{ maxWidth: 640 }}>
         <div className="page-header">
           <div>
-            <h1>Workspace created</h1>
+            <h1>Webhook created</h1>
             <p>Primary API key was generated automatically. You can reveal it anytime later.</p>
           </div>
         </div>
@@ -53,11 +53,11 @@ export function WorkspaceCreatePage() {
           <KeyReveal secret={createdKey.key} initiallyRevealed />
         </div>
         <div className="row">
-          <Link to={`/workspaces/${createdWsId}`} className="btn btn-primary">
-            Go to workspace
+          <Link to={`/webhooks/${createdWhId}`} className="btn btn-primary">
+            Go to webhook
           </Link>
-          <Link to={`/workspaces/${createdWsId}/routes`} className="btn">
-            Add API Routes
+          <Link to={`/webhooks/${createdWhId}/flows`} className="btn">
+            Add HTTP Flows
           </Link>
         </div>
       </div>
@@ -68,8 +68,8 @@ export function WorkspaceCreatePage() {
     <div className="stack" style={{ maxWidth: 640 }}>
       <div className="page-header">
         <div>
-          <h1>New API Workspace</h1>
-          <p>Community edition allows up to two active workspaces. A Primary key is created on save.</p>
+            <h1>New Webhook</h1>
+          <p>Community edition allows up to two active webhooks. A Primary key is created on save.</p>
         </div>
       </div>
 
@@ -81,7 +81,7 @@ export function WorkspaceCreatePage() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            placeholder="Workspace name"
+            placeholder="Webhook name"
           />
         </div>
         <div className="field">
@@ -144,9 +144,9 @@ export function WorkspaceCreatePage() {
 
         <div className="row">
           <button type="submit" className="btn btn-primary">
-            Create workspace
+            Create webhook
           </button>
-          <Link to="/workspaces" className="btn">
+          <Link to="/webhooks" className="btn">
             Cancel
           </Link>
         </div>

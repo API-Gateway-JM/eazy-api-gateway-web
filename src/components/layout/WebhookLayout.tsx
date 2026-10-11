@@ -3,22 +3,24 @@ import { useMockStore } from '@/store/MockStore'
 
 const TABS = [
   { segment: '', label: 'Overview', end: true },
+  { segment: 'flows', label: 'HTTP Flows' },
+  { segment: 'input', label: 'Input Data' },
+  { segment: 'output', label: 'Output Data' },
   { segment: 'keys', label: 'API Keys' },
-  { segment: 'routes', label: 'API Routes' },
   { segment: 'clients', label: 'Allowed Clients' },
 ]
 
-export function WorkspaceLayout() {
-  const { workspaceId = '' } = useParams()
-  const { getWorkspace } = useMockStore()
-  const ws = getWorkspace(workspaceId)
+export function WebhookLayout() {
+  const { webhookId = '' } = useParams()
+  const { getWebhook } = useMockStore()
+  const wh = getWebhook(webhookId)
 
-  if (!ws) {
+  if (!wh) {
     return (
       <div className="card empty">
-        <p>Workspace not found.</p>
-        <Link to="/workspaces" className="btn btn-primary" style={{ display: 'inline-block', marginTop: '0.75rem' }}>
-          Back to API Workspaces
+        <p>Webhook not found.</p>
+        <Link to="/webhooks" className="btn btn-primary" style={{ display: 'inline-block', marginTop: '0.75rem' }}>
+          Back to Webhooks
         </Link>
       </div>
     )
@@ -29,18 +31,18 @@ export function WorkspaceLayout() {
       <div className="page-header" style={{ marginBottom: '0.5rem' }}>
         <div>
           <p className="muted" style={{ marginBottom: '0.35rem' }}>
-            <Link to="/workspaces">API Workspaces</Link> / {ws.name}
+            <Link to="/webhooks">Webhooks</Link> / {wh.name}
           </p>
-          <h1 style={{ margin: 0 }}>{ws.name}</h1>
-          {ws.description ? <p className="muted">{ws.description}</p> : null}
+          <h1 style={{ margin: 0 }}>{wh.name}</h1>
+          {wh.description ? <p className="muted">{wh.description}</p> : null}
         </div>
       </div>
-      <div className="workspace-layout">
-        <nav className="workspace-nav" aria-label="Workspace">
+      <div className="webhook-layout">
+        <nav className="webhook-nav" aria-label="Webhook">
           {TABS.map((tab) => {
             const to = tab.segment
-              ? `/workspaces/${workspaceId}/${tab.segment}`
-              : `/workspaces/${workspaceId}`
+              ? `/webhooks/${webhookId}/${tab.segment}`
+              : `/webhooks/${webhookId}`
             return (
               <NavLink
                 key={tab.label}
@@ -54,7 +56,7 @@ export function WorkspaceLayout() {
           })}
         </nav>
         <div className="stack">
-          <Outlet context={{ workspace: ws }} />
+          <Outlet context={{ webhook: wh }} />
         </div>
       </div>
     </div>

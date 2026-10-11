@@ -3,35 +3,35 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { formatDate } from '@/lib/ids'
 import { useMockStore } from '@/store/MockStore'
 
-export function WorkspaceOverviewPage() {
-  const { workspaceId = '' } = useParams()
+export function WebhookOverviewPage() {
+  const { webhookId = '' } = useParams()
   const navigate = useNavigate()
   const {
-    getWorkspace,
-    updateWorkspace,
-    deleteWorkspace,
-    keysForWorkspace,
-    routesForWorkspace,
+    getWebhook,
+    updateWebhook,
+    deleteWebhook,
+    keysForWebhook,
+    flowsForWebhook,
   } = useMockStore()
-  const ws = getWorkspace(workspaceId)
-  const [name, setName] = useState(ws?.name ?? '')
-  const [description, setDescription] = useState(ws?.description ?? '')
+  const wh = getWebhook(webhookId)
+  const [name, setName] = useState(wh?.name ?? '')
+  const [description, setDescription] = useState(wh?.description ?? '')
 
   useEffect(() => {
-    if (!ws) return
-    setName(ws.name)
-    setDescription(ws.description ?? '')
-  }, [ws])
+    if (!wh) return
+    setName(wh.name)
+    setDescription(wh.description ?? '')
+  }, [wh])
 
-  if (!ws) return null
+  if (!wh) return null
 
   function onSave(e: FormEvent) {
     e.preventDefault()
-    updateWorkspace(workspaceId, { name, description })
+    updateWebhook(webhookId, { name, description })
   }
 
-  const keys = keysForWorkspace(workspaceId)
-  const routes = routesForWorkspace(workspaceId)
+  const keys = keysForWebhook(webhookId)
+  const flows = flowsForWebhook(webhookId)
 
   return (
     <div className="stack">
@@ -39,36 +39,36 @@ export function WorkspaceOverviewPage() {
         <div className="card">
           <h3>API Keys</h3>
           <div className="stat">{keys.filter((k) => k.status === 'active').length}</div>
-          <Link to={`/workspaces/${workspaceId}/keys`}>Manage keys</Link>
+          <Link to={`/webhooks/${webhookId}/keys`}>Manage keys</Link>
         </div>
         <div className="card">
-          <h3>API Routes</h3>
-          <div className="stat">{routes.length}</div>
-          <Link to={`/workspaces/${workspaceId}/routes`}>Manage routes</Link>
+          <h3>HTTP Flows</h3>
+          <div className="stat">{flows.length}</div>
+          <Link to={`/webhooks/${webhookId}/flows`}>Manage flows</Link>
         </div>
         <div className="card">
           <h3>Allowed clients</h3>
-          <div className="stat">{ws.allowedClients.length}</div>
-          <Link to={`/workspaces/${workspaceId}/clients`}>Manage clients</Link>
+          <div className="stat">{wh.allowedClients.length}</div>
+          <Link to={`/webhooks/${webhookId}/clients`}>Manage clients</Link>
         </div>
       </div>
 
       <form className="card stack" onSubmit={onSave}>
         <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Overview</h2>
         <div className="field">
-          <label htmlFor="ws-name">Name</label>
-          <input id="ws-name" value={name} onChange={(e) => setName(e.target.value)} required />
+          <label htmlFor="wh-name">Name</label>
+          <input id="wh-name" value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
         <div className="field">
-          <label htmlFor="ws-desc">Description</label>
+          <label htmlFor="wh-desc">Description</label>
           <textarea
-            id="ws-desc"
+            id="wh-desc"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
         </div>
         <p className="muted" style={{ fontSize: '0.85rem' }}>
-          Created {formatDate(ws.createdAt)} · Updated {formatDate(ws.updatedAt)}
+          Created {formatDate(wh.createdAt)} · Updated {formatDate(wh.updatedAt)}
         </p>
         <div className="row">
           <button type="submit" className="btn btn-primary">
@@ -81,9 +81,9 @@ export function WorkspaceOverviewPage() {
         <h2 style={{ margin: 0, fontSize: '1.05rem' }}>Danger Zone</h2>
         <div className="danger-zone-row">
           <div>
-            <h3>Delete workspace</h3>
+            <h3>Delete webhook</h3>
             <p className="muted" style={{ fontSize: '0.85rem' }}>
-              Permanently deletes this workspace and its API keys and routes. This cannot be
+              Permanently deletes this webhook and its API keys and flows. This cannot be
               undone.
             </p>
           </div>
@@ -91,13 +91,13 @@ export function WorkspaceOverviewPage() {
             type="button"
             className="btn btn-danger-outline"
             onClick={() => {
-              if (window.confirm('Delete this workspace and its keys/routes?')) {
-                deleteWorkspace(workspaceId)
-                navigate('/workspaces')
+              if (window.confirm('Delete this webhook and its keys/flows?')) {
+                deleteWebhook(webhookId)
+                navigate('/webhooks')
               }
             }}
           >
-            Delete workspace
+            Delete webhook
           </button>
         </div>
       </div>

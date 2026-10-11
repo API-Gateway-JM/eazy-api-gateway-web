@@ -1,11 +1,11 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { useMockStore } from '@/store/MockStore'
-import type { ProviderAccount } from '@/types'
+import type { ConnectionAccount } from '@/types'
 
 type AccountEditor =
   | { type: 'create' }
-  | { type: 'edit'; account: ProviderAccount }
+  | { type: 'edit'; account: ConnectionAccount }
   | null
 
 function maskKey(key: string) {
@@ -13,30 +13,31 @@ function maskKey(key: string) {
   return `${key.slice(0, 4)}…${key.slice(-4)}`
 }
 
-export function ProviderAccountsPage() {
-  const { providerId = '' } = useParams()
+export function HttpConnectionAccountsPage() {
+  const { connectionId = '' } = useParams()
   const {
     state,
     createAccount,
     updateAccount,
     deleteAccount,
-    accountsForProvider,
+    accountsForConnection,
     pushToast,
   } = useMockStore()
 
-  const provider = state.providers.find((p) => p.id === providerId)
-  const accounts = accountsForProvider(providerId)
+  const connection = state.connections.find((p) => p.id === connectionId)
+  const accounts = accountsForConnection(connectionId)
 
   const usageByAccount = useMemo(() => {
     const map = new Map<string, number>()
-    for (const route of state.routes) {
-      for (const b of route.providers) {
-        if (!b.accountId) continue
-        map.set(b.accountId, (map.get(b.accountId) ?? 0) + 1)
+    for (const flow of state.flows) {
+      for (const node of flow.nodes) {
+        if (node.type === 'http' && node.accountId) {
+          map.set(node.accountId, (map.get(node.accountId) ?? 0) + 1)
+        }
       }
     }
     return map
-  }, [state.routes])
+  }, [state.flows])
 
   const [editor, setEditor] = useState<AccountEditor>(null)
   const [accountName, setAccountName] = useState('')
@@ -44,19 +45,19 @@ export function ProviderAccountsPage() {
   const [revealAccountKey, setRevealAccountKey] = useState(false)
   const [deleteAccountId, setDeleteAccountId] = useState<string | null>(null)
 
-  if (!provider) {
+  if (!connection) {
     return (
       <div className="card empty">
-        <p>Provider not found.</p>
-        <Link to="/providers" className="btn" style={{ marginTop: '0.75rem' }}>
-          Back to providers
+        <p>Connection not found.</p>
+        <Link to="/connections" className="btn" style={{ marginTop: '0.75rem' }}>
+          Back to connections
         </Link>
       </div>
     )
   }
 
-  if (provider.origin !== 'platform' || !provider.requiresApiKey) {
-    return <Navigate to="/providers" replace />
+  if (connection.origin !== 'platform' || !connection.requiresApiKey) {
+    return <Navigate to="/connections" replace />
   }
 
   function openCreate() {
@@ -66,7 +67,7 @@ export function ProviderAccountsPage() {
     setEditor({ type: 'create' })
   }
 
-  function openEdit(account: ProviderAccount) {
+  function openEdit(account: ConnectionAccount) {
     setAccountName(account.name)
     setAccountKey(account.apiKey)
     setRevealAccountKey(false)
@@ -81,7 +82,7 @@ export function ProviderAccountsPage() {
     e.preventDefault()
     if (editor?.type === 'create') {
       const result = createAccount({
-        providerId,
+        connectionId,
         name: accountName,
         apiKey: accountKey,
       })
@@ -122,16 +123,16 @@ export function ProviderAccountsPage() {
       <div className="page-header">
         <div>
           <p className="muted" style={{ marginBottom: '0.25rem' }}>
-            <Link to="/providers">Providers</Link>
+            <Link to="/connections">HTTP Connections</Link>
             {' / '}
-            <span>{provider.name}</span>
+            <span>{connection.name}</span>
             {' / '}
             <span>Accounts</span>
           </p>
           <h1 style={{ margin: 0 }}>Connected accounts</h1>
           <p>
-            Named {provider.credentialLabel?.toLowerCase() ?? 'API key'} credentials for{' '}
-            {provider.name}. Reuse them across routes, or add several to stack free quotas in a
+            Named {connection.credentialLabel?.toLowerCase() ?? 'API key'} credentials for{' '}
+            {connection.name}. Reuse them across flows, or add several to stack free quotas in a
             cascade.
           </p>
         </div>
@@ -142,7 +143,7 @@ export function ProviderAccountsPage() {
 
       {accounts.length === 0 ? (
         <div className="card empty">
-          <p>No accounts connected for {provider.name} yet.</p>
+          <p>No accounts connected for {connection.name} yet.</p>
           <button
             type="button"
             className="btn btn-primary"
@@ -165,12 +166,12 @@ export function ProviderAccountsPage() {
                   <div>
                     <strong style={{ fontSize: '1.05rem' }}>{a.name}</strong>
                     <p className="mono muted" style={{ marginTop: '0.35rem', fontSize: '0.85rem' }}>
-                      {provider.credentialLabel ?? 'API Key'}: {maskKey(a.apiKey)}
+                      {connection.credentialLabel ?? 'API Key'}: {maskKey(a.apiKey)}
                     </p>
                     <p className="field-hint" style={{ marginTop: '0.35rem' }}>
                       {usage === 0
-                        ? 'Not used on any route binding.'
-                        : `Used on ${usage} route binding${usage === 1 ? '' : 's'}.`}
+                        ? 'Not used on any flow binding.'
+                        : `Used on ${usage} flow binding${usage === 1 ? '' : 's'}.`}
                     </p>
                   </div>
                   <div className="row">
@@ -193,8 +194,8 @@ export function ProviderAccountsPage() {
       )}
 
       <p className="field-hint">
-        Attach these accounts from a <Link to="/workspaces">workspace</Link> route editor. Delete is
-        blocked while an account is still attached to a route.
+        Attach these accounts from a <Link to="/webhooks">webhook</Link> flow editor. Delete is
+        blocked while an account is still attached to a flow.
       </p>
 
       {editor ? (
@@ -208,8 +209,8 @@ export function ProviderAccountsPage() {
           >
             <h2 id="account-editor-title">
               {editor.type === 'create'
-                ? `Connect ${provider.name}`
-                : `Edit ${provider.name} account`}
+                ? `Connect ${connection.name}`
+                : `Edit ${connection.name} account`}
             </h2>
             <form className="stack" onSubmit={onSubmit}>
               <div className="field">
@@ -223,7 +224,7 @@ export function ProviderAccountsPage() {
                 />
               </div>
               <div className="field">
-                <label htmlFor="acc-key">{provider.credentialLabel ?? 'API Key'}</label>
+                <label htmlFor="acc-key">{connection.credentialLabel ?? 'API Key'}</label>
                 <div className="row">
                   <input
                     id="acc-key"
@@ -266,8 +267,7 @@ export function ProviderAccountsPage() {
           >
             <h2>Delete connected account?</h2>
             <p className="muted">
-              If this account is attached to any route, delete will be blocked until those bindings
-              are removed.
+              If this account is used by an HTTP node, delete stays blocked until that node picks another account.
             </p>
             <div className="row" style={{ justifyContent: 'flex-end', marginTop: '1rem' }}>
               <button type="button" className="btn" onClick={() => setDeleteAccountId(null)}>

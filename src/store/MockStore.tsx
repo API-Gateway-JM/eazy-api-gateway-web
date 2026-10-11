@@ -11,67 +11,81 @@ import {
   expiresAtFromOption,
   mockApiKeySecret,
   nowIso,
-  slugify,
   uid,
 } from '@/lib/ids'
 import { normalizeHttpConfig } from '@/lib/httpConfig'
+import { validateOperatorConfig } from '@/lib/operators'
+import { emptyStart, isFlowExportFile, remapImportedFlow, type FlowExportFile } from '@/lib/flowGraph'
+import { defaultWebhookInput, defaultWebhookResponse, normalizeWebhook } from '@/lib/webhooks'
 import type {
   ActivityEvent,
   AllowedClient,
   ApiKey,
-  ApiRoute,
-  ApiWorkspace,
+  HttpFlow,
+  ApiWebhook,
   AppState,
   ExpirationOption,
-  ExternalProvider,
+  ExternalHttpConnection,
+  FlowEdge,
+  FlowNode,
   GenericHttpConfig,
   Operator,
-  ProviderAccount,
-  RouteProviderBinding,
+  OperatorDef,
+  OperatorKind,
+  OperatorUsage,
+  ConnectionAccount,
+  WebhookInput,
+  WebhookResponse,
 } from '@/types'
 import {
   COMMUNITY_MAX_KEYS,
-  COMMUNITY_MAX_ROUTES,
-  COMMUNITY_MAX_WORKSPACES,
+  COMMUNITY_MAX_FLOWS,
+  COMMUNITY_MAX_WEBHOOKS,
   STORAGE_KEY,
 } from '@/types'
-import { createSeedState, SEED_PROVIDERS } from '@/store/seed'
+import { createSeedState, SEED_CONNECTIONS } from '@/store/seed'
 
 type Toast = { id: string; tone: 'info' | 'success' | 'warning' | 'danger'; message: string }
 
-type CreateWorkspaceInput = {
+type CreateWebhookInput = {
   name: string
   description?: string
   allowedClients: Omit<AllowedClient, 'id'>[]
 }
 
 type CreateKeyInput = {
-  workspaceId: string
+  webhookId: string
   name: string
   expiration: ExpirationOption
 }
 
-type CreateRouteInput = {
-  workspaceId: string
+type CreateFlowInput = {
+  webhookId: string
   name: string
-  path: string
   description?: string
 }
 
-type CreateCustomProviderInput = {
+type SaveFlowInput = {
+  name: string
+  description?: string
+  nodes: FlowNode[]
+  edges: FlowEdge[]
+}
+
+type CreateCustomConnectionInput = {
   name: string
   description?: string
   http: GenericHttpConfig
 }
 
-type UpdateCustomProviderInput = {
+type UpdateCustomConnectionInput = {
   name?: string
   description?: string
   http?: GenericHttpConfig
 }
 
 type CreateAccountInput = {
-  providerId: string
+  connectionId: string
   name: string
   apiKey: string
 }
@@ -92,100 +106,59 @@ type MockStoreValue = {
   setTheme: (theme: 'light' | 'dark') => void
   setSidebarCollapsed: (collapsed: boolean) => void
   setMockBaseUrl: (url: string) => void
-  createWorkspace: (input: CreateWorkspaceInput) => { workspace: ApiWorkspace; primaryKey: ApiKey } | { error: string }
-  updateWorkspace: (id: string, patch: Partial<Pick<ApiWorkspace, 'name' | 'description'>>) => void
-  deleteWorkspace: (id: string) => void
-  addAllowedClient: (workspaceId: string, client: Omit<AllowedClient, 'id'>) => void
-  removeAllowedClient: (workspaceId: string, clientId: string) => void
+  createWebhook: (input: CreateWebhookInput) => { webhook: ApiWebhook; primaryKey: ApiKey } | { error: string }
+  updateWebhook: (id: string, patch: Partial<Pick<ApiWebhook, 'name' | 'description'>>) => void
+  updateWebhookInput: (id: string, input: WebhookInput) => void
+  updateWebhookResponse: (id: string, response: WebhookResponse) => void
+  deleteWebhook: (id: string) => void
+  addAllowedClient: (webhookId: string, client: Omit<AllowedClient, 'id'>) => void
+  removeAllowedClient: (webhookId: string, clientId: string) => void
   createApiKey: (input: CreateKeyInput) => ApiKey | { error: string }
   regenerateApiKey: (keyId: string) => ApiKey | { error: string }
   revokeApiKey: (keyId: string) => void
-  createRoute: (input: CreateRouteInput) => ApiRoute | { error: string }
-  updateRoute: (routeId: string, patch: Partial<Pick<ApiRoute, 'name' | 'path' | 'description'>>) => { error?: string }
-  deleteRoute: (workspaceId: string, routeId: string) => void
-  createCustomProvider: (input: CreateCustomProviderInput) => ExternalProvider | { error: string }
-  updateCustomProvider: (id: string, patch: UpdateCustomProviderInput) => { error?: string }
-  deleteCustomProvider: (id: string) => { error?: string }
-  createAccount: (input: CreateAccountInput) => ProviderAccount | { error: string }
+  createFlow: (input: CreateFlowInput) => HttpFlow | { error: string }
+  saveFlowGraph: (flowId: string, input: SaveFlowInput) => { error?: string }
+  importFlow: (webhookId: string, file: FlowExportFile) => HttpFlow | { error: string }
+  deleteFlow: (webhookId: string, flowId: string) => void
+  createCustomConnection: (input: CreateCustomConnectionInput) => ExternalHttpConnection | { error: string }
+  updateCustomConnection: (id: string, patch: UpdateCustomConnectionInput) => { error?: string }
+  deleteCustomConnection: (id: string) => { error?: string }
+  createOperator: (input: {
+    name: string
+    kind: OperatorKind
+    description?: string
+    config: OperatorDef['config']
+  }) => OperatorDef | { error: string }
+  updateOperator: (
+    id: string,
+    patch: { name?: string; description?: string; kind?: OperatorKind; config?: OperatorDef['config'] },
+  ) => { error?: string }
+  deleteOperator: (id: string) => { error?: string }
+  findOperatorUsages: (operatorId: string) => OperatorUsage[]
+  createAccount: (input: CreateAccountInput) => ConnectionAccount | { error: string }
   updateAccount: (id: string, patch: UpdateAccountInput) => { error?: string }
   deleteAccount: (id: string) => { error?: string }
-  accountsForProvider: (providerId: string) => ProviderAccount[]
-  addProviderToRoute: (
-    routeId: string,
-    providerId: string,
-    accountId?: string | null,
-  ) => { error?: string }
-  removeProviderFromRoute: (routeId: string, bindingId: string) => void
-  updateBinding: (
-    routeId: string,
-    bindingId: string,
-    patch: Partial<
-      Pick<
-        RouteProviderBinding,
-        'enabled' | 'isDefault' | 'maxRequests' | 'quotaPeriod' | 'accountId'
-      >
-    >,
-  ) => void
-  moveBinding: (routeId: string, bindingId: string, direction: 'up' | 'down') => void
-  pathConflict: (path: string, excludeRouteId?: string) => boolean
-  getWorkspace: (id: string) => ApiWorkspace | undefined
-  getRoute: (id: string) => ApiRoute | undefined
-  keysForWorkspace: (workspaceId: string) => ApiKey[]
-  routesForWorkspace: (workspaceId: string) => ApiRoute[]
+  accountsForConnection: (connectionId: string) => ConnectionAccount[]
+  getWebhook: (id: string) => ApiWebhook | undefined
+  getFlow: (id: string) => HttpFlow | undefined
+  keysForWebhook: (webhookId: string) => ApiKey[]
+  flowsForWebhook: (webhookId: string) => HttpFlow[]
   mockRequestsThisMonth: () => number
 }
 
 const MockStoreContext = createContext<MockStoreValue | null>(null)
 
-type LegacyBinding = RouteProviderBinding & {
-  maxRequestsPerMonth?: number | null
-  usedRequestsThisMonth?: number
-  http?: GenericHttpConfig
-  upstreamApiKey?: string
-}
-
-const PLATFORM_IDS = new Set(SEED_PROVIDERS.map((p) => p.id))
+const PLATFORM_IDS = new Set(SEED_CONNECTIONS.map((p) => p.id))
 const REMOVED_GENERIC_HTTP_ID = 'prov_generic_http'
-const PLATFORM_BY_ID = new Map(SEED_PROVIDERS.map((p) => [p.id, p]))
 
-function normalizeBinding(raw: LegacyBinding): RouteProviderBinding | null {
-  if (raw.providerId === REMOVED_GENERIC_HTTP_ID) return null
-
-  const maxRequests =
-    raw.maxRequests !== undefined
-      ? raw.maxRequests
-      : raw.maxRequestsPerMonth !== undefined
-        ? raw.maxRequestsPerMonth
-        : null
-  const usedRequests =
-    raw.usedRequests !== undefined
-      ? raw.usedRequests
-      : raw.usedRequestsThisMonth !== undefined
-        ? raw.usedRequestsThisMonth
-        : 0
-  const quotaPeriod = raw.quotaPeriod ?? 'day'
-
-  return {
-    id: raw.id,
-    providerId: raw.providerId,
-    accountId: raw.accountId ?? null,
-    priority: raw.priority,
-    enabled: raw.enabled,
-    isDefault: raw.isDefault,
-    maxRequests,
-    quotaPeriod,
-    usedRequests,
-  }
-}
-
-function normalizeCustomProvider(
-  raw: ExternalProvider & { http?: GenericHttpConfig },
-): ExternalProvider | null {
+function normalizeCustomConnection(
+  raw: ExternalHttpConnection & { http?: GenericHttpConfig },
+): ExternalHttpConnection | null {
   if (PLATFORM_IDS.has(raw.id) || raw.id === REMOVED_GENERIC_HTTP_ID) return null
   if (raw.origin !== 'custom' && !raw.http) return null
   return {
     id: raw.id,
-    name: raw.name?.trim() || 'Custom provider',
+    name: raw.name?.trim() || 'Custom connection',
     kind: 'http',
     description: raw.description,
     requiresApiKey: false,
@@ -197,15 +170,15 @@ function normalizeCustomProvider(
   }
 }
 
-function normalizeAccount(raw: ProviderAccount): ProviderAccount | null {
-  if (!raw?.id || !raw.providerId) return null
-  if (!PLATFORM_IDS.has(raw.providerId)) return null
+function normalizeAccount(raw: ConnectionAccount): ConnectionAccount | null {
+  if (!raw?.id || !raw.connectionId) return null
+  if (!PLATFORM_IDS.has(raw.connectionId)) return null
   const name = raw.name?.trim()
   const apiKey = raw.apiKey?.trim()
   if (!name || !apiKey) return null
   return {
     id: raw.id,
-    providerId: raw.providerId,
+    connectionId: raw.connectionId,
     name,
     apiKey,
     createdAt: raw.createdAt || nowIso(),
@@ -213,117 +186,68 @@ function normalizeAccount(raw: ProviderAccount): ProviderAccount | null {
   }
 }
 
-function normalizeRoutes(routes: ApiRoute[] | undefined): ApiRoute[] {
-  if (!routes?.length) return createSeedState().routes
-  return routes.map((route) => ({
-    ...route,
-    providers: ((route.providers as LegacyBinding[] | undefined) ?? [])
-      .map(normalizeBinding)
-      .filter((b): b is RouteProviderBinding => Boolean(b)),
-  }))
+function normalizeFlows(flows: HttpFlow[] | undefined): HttpFlow[] {
+  if (!flows?.length || flows.some((flow) => !Array.isArray(flow.nodes) || !Array.isArray(flow.edges))) {
+    return createSeedState().flows
+  }
+  return flows
 }
 
-function mergeProviders(parsed: AppState | undefined): ExternalProvider[] {
-  const platform = structuredClone(SEED_PROVIDERS)
-  const customs = (parsed?.providers ?? [])
-    .map((p) => normalizeCustomProvider(p))
-    .filter((p): p is ExternalProvider => Boolean(p))
+function normalizeOperators(operators: OperatorDef[] | undefined): OperatorDef[] {
+  const seed = createSeedState().operators
+  if (!operators?.length) return seed
+  const kept = operators.filter((op) => op.kind === 'regex' || op.kind === 'text')
+  return kept.length > 0 ? kept : seed
+}
+
+function mergeConnections(parsed: AppState | undefined): ExternalHttpConnection[] {
+  const platform = structuredClone(SEED_CONNECTIONS)
+  const customs = (parsed?.connections ?? [])
+    .map((p) => normalizeCustomConnection(p))
+    .filter((p): p is ExternalHttpConnection => Boolean(p))
   return [...platform, ...customs]
 }
 
-/** Lift legacy binding.upstreamApiKey into ProviderAccount rows. */
-function migrateAccountsFromBindings(
-  existing: ProviderAccount[],
-  routes: ApiRoute[],
-  legacyBindings: { routeId: string; binding: LegacyBinding }[],
-): { accounts: ProviderAccount[]; routes: ApiRoute[] } {
-  const accounts = [...existing]
-  const accountIdByBindingId = new Map<string, string>()
-  const nextIndexByProvider = new Map<string, number>()
-
-  for (const { binding } of legacyBindings) {
-    if (binding.accountId || !binding.upstreamApiKey?.trim()) continue
-    const provider = PLATFORM_BY_ID.get(binding.providerId)
-    if (!provider?.requiresApiKey) continue
-    const id = uid('acc')
-    const n = (nextIndexByProvider.get(binding.providerId) ?? 0) + 1
-    nextIndexByProvider.set(binding.providerId, n)
-    accounts.push({
-      id,
-      providerId: binding.providerId,
-      name: n === 1 ? 'Primary' : `Account ${n}`,
-      apiKey: binding.upstreamApiKey.trim(),
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-    })
-    accountIdByBindingId.set(binding.id, id)
+function collectOperatorUsages(flows: HttpFlow[], operatorId: string): OperatorUsage[] {
+  const usages: OperatorUsage[] = []
+  for (const flow of flows) {
+    for (const node of flow.nodes) {
+      if (node.type === 'operator' && node.operatorId === operatorId) {
+        usages.push({ flowId: flow.id, flowName: flow.name, nodeId: node.id })
+      }
+    }
   }
+  return usages
+}
 
-  const nextRoutes = routes.map((route) => ({
-    ...route,
-    providers: route.providers.map((b) => {
-      const migrated = accountIdByBindingId.get(b.id)
-      if (!migrated) return b
-      return { ...b, accountId: migrated }
-    }),
-  }))
-
-  return { accounts, routes: nextRoutes }
+function normalizeWebhooks(webhooks: ApiWebhook[] | undefined): ApiWebhook[] {
+  if (!webhooks?.length) return createSeedState().webhooks
+  return webhooks.map((w) => normalizeWebhook(w))
 }
 
 function loadState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return createSeedState()
-    const parsed = JSON.parse(raw) as AppState & {
-      routes?: ApiRoute[]
-    }
+    const parsed = JSON.parse(raw) as AppState
     const seed = createSeedState()
-    const providers = mergeProviders(parsed)
-    let routes = normalizeRoutes(parsed.routes)
-    const existingAccounts = (parsed.accounts ?? [])
+    const accounts = (parsed.accounts ?? [])
       .map(normalizeAccount)
-      .filter((a): a is ProviderAccount => Boolean(a))
-
-    const legacyPairs: { routeId: string; binding: LegacyBinding }[] = []
-    for (const route of parsed.routes ?? []) {
-      for (const b of (route.providers as LegacyBinding[] | undefined) ?? []) {
-        legacyPairs.push({ routeId: route.id, binding: b })
-      }
-    }
-
-    const migrated = migrateAccountsFromBindings(existingAccounts, routes, legacyPairs)
-    routes = migrated.routes
-
+      .filter((a): a is ConnectionAccount => Boolean(a))
     return {
       ...seed,
       ...parsed,
-      providers,
-      accounts: migrated.accounts,
-      routes,
+      connections: mergeConnections(parsed),
+      accounts,
+      flows: normalizeFlows(parsed.flows),
+      webhooks: normalizeWebhooks(parsed.webhooks),
+      operators: normalizeOperators(parsed.operators),
       operator: parsed.operator ?? null,
       sidebarCollapsed: Boolean(parsed.sidebarCollapsed),
     }
   } catch {
     return createSeedState()
   }
-}
-
-function reorderBindings(bindings: RouteProviderBinding[]): RouteProviderBinding[] {
-  const enabled = bindings
-    .filter((b) => b.enabled)
-    .sort((a, b) => a.priority - b.priority)
-    .map((b, i) => ({ ...b, priority: i + 1 }))
-  const disabled = bindings
-    .filter((b) => !b.enabled)
-    .map((b, i) => ({ ...b, priority: enabled.length + i + 1, isDefault: false }))
-  const merged = [...enabled, ...disabled]
-  if (enabled.length > 0 && !enabled.some((b) => b.isDefault)) {
-    return merged.map((b) =>
-      b.id === enabled[0].id ? { ...b, isDefault: true } : { ...b, isDefault: false },
-    )
-  }
-  return merged
 }
 
 export function MockStoreProvider({ children }: { children: ReactNode }) {
@@ -405,31 +329,23 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, mockBaseUrl: url }))
   }, [])
 
-  const pathConflict = useCallback(
-    (path: string, excludeRouteId?: string) =>
-      state.routes.some(
-        (p) => p.path === path && p.id !== excludeRouteId,
-      ),
-    [state.routes],
-  )
-
-  const createWorkspace = useCallback(
-    (input: CreateWorkspaceInput) => {
-      if (state.workspaces.length >= COMMUNITY_MAX_WORKSPACES) {
+  const createWebhook = useCallback(
+    (input: CreateWebhookInput) => {
+      if (state.webhooks.length >= COMMUNITY_MAX_WEBHOOKS) {
         pushToast(
           'warning',
-          'Portable Community limit — upgrade for more workspaces.',
+          'Portable Community limit — upgrade for more webhooks.',
         )
         return { error: 'community_limit' }
       }
       if (!input.name.trim()) return { error: 'Name is required.' }
 
-      const wsId = uid('ws')
+      const whId = uid('wh')
       const keyId = uid('key')
       const createdAt = nowIso()
       const primaryKey: ApiKey = {
         id: keyId,
-        apiWorkspaceId: wsId,
+        apiWebhookId: whId,
         name: 'Primary',
         key: mockApiKeySecret(),
         createdAt,
@@ -437,8 +353,8 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
         expiresAt: null,
         status: 'active',
       }
-      const workspace: ApiWorkspace = {
-        id: wsId,
+      const webhook: ApiWebhook = {
+        id: whId,
         name: input.name.trim(),
         description: input.description?.trim() || undefined,
         allowedClients: input.allowedClients.map((c) => ({
@@ -446,35 +362,37 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
           id: uid('cli'),
         })),
         apiKeyIds: [keyId],
-        routeIds: [],
+        flowIds: [],
+        input: defaultWebhookInput(),
+        response: defaultWebhookResponse(),
         createdAt,
         updatedAt: createdAt,
       }
 
       setState((prev) => ({
         ...prev,
-        workspaces: [...prev.workspaces, workspace],
+        webhooks: [...prev.webhooks, webhook],
         apiKeys: [...prev.apiKeys, primaryKey],
         activity: [
           {
             id: uid('act'),
             at: createdAt,
-            kind: 'workspace',
-            message: `Workspace “${workspace.name}” created with Primary API key.`,
+            kind: 'webhook',
+            message: `Webhook “${webhook.name}” created with Primary API key.`,
           },
           ...prev.activity,
         ],
       }))
-      return { workspace, primaryKey }
+      return { webhook, primaryKey }
     },
-    [pushToast, state.workspaces.length],
+    [pushToast, state.webhooks.length],
   )
 
-  const updateWorkspace = useCallback(
-    (id: string, patch: Partial<Pick<ApiWorkspace, 'name' | 'description'>>) => {
+  const updateWebhook = useCallback(
+    (id: string, patch: Partial<Pick<ApiWebhook, 'name' | 'description'>>) => {
       setState((prev) => ({
         ...prev,
-        workspaces: prev.workspaces.map((w) =>
+        webhooks: prev.webhooks.map((w) =>
           w.id === id
             ? {
                 ...w,
@@ -493,21 +411,39 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
     [],
   )
 
-  const deleteWorkspace = useCallback((id: string) => {
+  const updateWebhookInput = useCallback((id: string, input: WebhookInput) => {
+    setState((prev) => ({
+      ...prev,
+      webhooks: prev.webhooks.map((w) =>
+        w.id === id ? { ...w, input, updatedAt: nowIso() } : w,
+      ),
+    }))
+  }, [])
+
+  const updateWebhookResponse = useCallback((id: string, response: WebhookResponse) => {
+    setState((prev) => ({
+      ...prev,
+      webhooks: prev.webhooks.map((w) =>
+        w.id === id ? { ...w, response, updatedAt: nowIso() } : w,
+      ),
+    }))
+  }, [])
+
+  const deleteWebhook = useCallback((id: string) => {
     setState((prev) => {
-      const ws = prev.workspaces.find((w) => w.id === id)
-      if (!ws) return prev
+      const wh = prev.webhooks.find((w) => w.id === id)
+      if (!wh) return prev
       return {
         ...prev,
-        workspaces: prev.workspaces.filter((w) => w.id !== id),
-        apiKeys: prev.apiKeys.filter((k) => k.apiWorkspaceId !== id),
-        routes: prev.routes.filter((p) => !ws.routeIds.includes(p.id)),
+        webhooks: prev.webhooks.filter((w) => w.id !== id),
+        apiKeys: prev.apiKeys.filter((k) => k.apiWebhookId !== id),
+        flows: prev.flows.filter((p) => !wh.flowIds.includes(p.id)),
         activity: [
           {
             id: uid('act'),
             at: nowIso(),
-            kind: 'workspace',
-            message: `Workspace “${ws.name}” deleted.`,
+            kind: 'webhook',
+            message: `Webhook “${wh.name}” deleted.`,
           },
           ...prev.activity,
         ],
@@ -516,13 +452,13 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const addAllowedClient = useCallback(
-    (workspaceId: string, client: Omit<AllowedClient, 'id'>) => {
+    (webhookId: string, client: Omit<AllowedClient, 'id'>) => {
       const value = client.value.trim()
       if (!value) return
       setState((prev) => ({
         ...prev,
-        workspaces: prev.workspaces.map((w) =>
-          w.id === workspaceId
+        webhooks: prev.webhooks.map((w) =>
+          w.id === webhookId
             ? {
                 ...w,
                 allowedClients: [
@@ -547,11 +483,11 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
     [],
   )
 
-  const removeAllowedClient = useCallback((workspaceId: string, clientId: string) => {
+  const removeAllowedClient = useCallback((webhookId: string, clientId: string) => {
     setState((prev) => ({
       ...prev,
-      workspaces: prev.workspaces.map((w) =>
-        w.id === workspaceId
+      webhooks: prev.webhooks.map((w) =>
+        w.id === webhookId
           ? {
               ...w,
               allowedClients: w.allowedClients.filter((c) => c.id !== clientId),
@@ -565,15 +501,15 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
   const createApiKey = useCallback(
     (input: CreateKeyInput) => {
       const existing = state.apiKeys.filter(
-        (k) => k.apiWorkspaceId === input.workspaceId && k.status === 'active',
+        (k) => k.apiWebhookId === input.webhookId && k.status === 'active',
       )
       if (existing.length >= COMMUNITY_MAX_KEYS) {
-        pushToast('warning', `Community edition allows at most ${COMMUNITY_MAX_KEYS} API keys per workspace.`)
+        pushToast('warning', `Community edition allows at most ${COMMUNITY_MAX_KEYS} API keys per webhook.`)
         return { error: 'max_keys' }
       }
       const key: ApiKey = {
         id: uid('key'),
-        apiWorkspaceId: input.workspaceId,
+        apiWebhookId: input.webhookId,
         name: input.name.trim() || 'Secondary',
         key: mockApiKeySecret(),
         createdAt: nowIso(),
@@ -584,8 +520,8 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
       setState((prev) => ({
         ...prev,
         apiKeys: [...prev.apiKeys, key],
-        workspaces: prev.workspaces.map((w) =>
-          w.id === input.workspaceId
+        webhooks: prev.webhooks.map((w) =>
+          w.id === input.webhookId
             ? { ...w, apiKeyIds: [...w.apiKeyIds, key.id], updatedAt: nowIso() }
             : w,
         ),
@@ -642,125 +578,140 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
     pushToast('info', 'API key revoked.')
   }, [pushToast])
 
-  const createRoute = useCallback(
-    (input: CreateRouteInput) => {
-      const path = input.path.trim()
+  const createFlow = useCallback(
+    (input: CreateFlowInput) => {
       if (!input.name.trim()) return { error: 'Name is required.' }
-      if (!path.startsWith('/')) return { error: 'Path must start with /.' }
-      if (pathConflict(path)) return { error: 'Path must be unique across routes.' }
-
-      const workspace = state.workspaces.find((w) => w.id === input.workspaceId)
-      if (!workspace) return { error: 'Workspace not found.' }
-      if (workspace.routeIds.length >= COMMUNITY_MAX_ROUTES) {
+      const webhook = state.webhooks.find((w) => w.id === input.webhookId)
+      if (!webhook) return { error: 'Webhook not found.' }
+      if (webhook.flowIds.length >= COMMUNITY_MAX_FLOWS) {
         pushToast(
           'warning',
-          `Community edition allows at most ${COMMUNITY_MAX_ROUTES} API routes per workspace.`,
+          `Community edition allows at most ${COMMUNITY_MAX_FLOWS} flows per webhook.`,
         )
-        return { error: 'max_routes' }
+        return { error: 'max_flows' }
       }
 
-      const route: ApiRoute = {
-        id: uid('route'),
+      const flow: HttpFlow = {
+        id: uid('flow'),
         name: input.name.trim(),
-        slug: slugify(input.name),
-        path,
         description: input.description?.trim() || undefined,
-        providers: [],
+        nodes: [emptyStart()],
+        edges: [],
         createdAt: nowIso(),
         updatedAt: nowIso(),
       }
       setState((prev) => ({
         ...prev,
-        routes: [...prev.routes, route],
-        workspaces: prev.workspaces.map((w) =>
-          w.id === input.workspaceId
-            ? { ...w, routeIds: [...w.routeIds, route.id], updatedAt: nowIso() }
+        flows: [...prev.flows, flow],
+        webhooks: prev.webhooks.map((w) =>
+          w.id === input.webhookId
+            ? { ...w, flowIds: [...w.flowIds, flow.id], updatedAt: nowIso() }
             : w,
         ),
         activity: [
           {
             id: uid('act'),
             at: nowIso(),
-            kind: 'route_updated',
-            message: `Route “${route.name}” created at ${route.path}.`,
+            kind: 'flow_updated',
+            message: `Flow “${flow.name}” created.`,
           },
           ...prev.activity,
         ],
       }))
-      return route
+      return flow
     },
-    [pathConflict, pushToast, state.workspaces],
+    [pushToast, state.webhooks],
   )
 
-  const updateRoute = useCallback(
-    (routeId: string, patch: Partial<Pick<ApiRoute, 'name' | 'path' | 'description'>>) => {
-      if (patch.path !== undefined) {
-        const path = patch.path.trim()
-        if (!path.startsWith('/')) return { error: 'Path must start with /.' }
-        if (pathConflict(path, routeId)) return { error: 'Path must be unique across routes.' }
+  const saveFlowGraph = useCallback(
+    (flowId: string, input: SaveFlowInput): { error?: string } => {
+      if (!input.name.trim()) return { error: 'Name is required.' }
+      let missing = false
+      setState((prev) => {
+        if (!prev.flows.some((flow) => flow.id === flowId)) {
+          missing = true
+          return prev
+        }
+        return {
+          ...prev,
+          flows: prev.flows.map((flow) =>
+            flow.id === flowId
+              ? {
+                  ...flow,
+                  name: input.name.trim(),
+                  description: input.description?.trim() || undefined,
+                  nodes: input.nodes,
+                  edges: input.edges,
+                  updatedAt: nowIso(),
+                }
+              : flow,
+          ),
+        }
+      })
+      if (missing) return { error: 'Flow not found.' }
+      pushActivity('flow_updated', `Flow “${input.name.trim()}” saved.`)
+      return {}
+    },
+    [pushActivity],
+  )
+
+  const importFlow = useCallback(
+    (webhookId: string, file: FlowExportFile): HttpFlow | { error: string } => {
+      if (!isFlowExportFile(file)) return { error: 'This file is not an eazy.flow v1 document.' }
+      const webhook = state.webhooks.find((item) => item.id === webhookId)
+      if (!webhook) return { error: 'Webhook not found.' }
+      if (webhook.flowIds.length >= COMMUNITY_MAX_FLOWS) {
+        return { error: `Community edition allows at most ${COMMUNITY_MAX_FLOWS} flows per webhook.` }
+      }
+      const name = file.flow.name?.trim()
+      if (!name) return { error: 'The file has no flow name.' }
+      const remapped = remapImportedFlow(file, state.operators)
+      const flow: HttpFlow = {
+        id: uid('flow'),
+        name,
+        description: file.flow.description,
+        nodes: remapped.nodes,
+        edges: remapped.edges,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
       }
       setState((prev) => ({
         ...prev,
-        routes: prev.routes.map((p) =>
-          p.id === routeId
-            ? {
-                ...p,
-                name: patch.name?.trim() ?? p.name,
-                path: patch.path?.trim() ?? p.path,
-                description:
-                  patch.description !== undefined
-                    ? patch.description.trim() || undefined
-                    : p.description,
-                slug: patch.name ? slugify(patch.name) : p.slug,
-                updatedAt: nowIso(),
-              }
-            : p,
+        operators: remapped.operators,
+        flows: [...prev.flows, flow],
+        webhooks: prev.webhooks.map((item) =>
+          item.id === webhookId
+            ? { ...item, flowIds: [...item.flowIds, flow.id], updatedAt: nowIso() }
+            : item,
         ),
       }))
-      pushActivity('route_updated', `Route updated.`)
-      return {}
+      pushActivity('flow_updated', `Flow “${name}” imported.`)
+      return flow
     },
-    [pathConflict, pushActivity],
+    [pushActivity, state.operators, state.webhooks],
   )
 
-  const deleteRoute = useCallback((workspaceId: string, routeId: string) => {
+  const deleteFlow = useCallback((webhookId: string, flowId: string) => {
     setState((prev) => ({
       ...prev,
-      routes: prev.routes.filter((p) => p.id !== routeId),
-      workspaces: prev.workspaces.map((w) =>
-        w.id === workspaceId
-          ? { ...w, routeIds: w.routeIds.filter((id) => id !== routeId), updatedAt: nowIso() }
+      flows: prev.flows.filter((p) => p.id !== flowId),
+      webhooks: prev.webhooks.map((w) =>
+        w.id === webhookId
+          ? { ...w, flowIds: w.flowIds.filter((id) => id !== flowId), updatedAt: nowIso() }
           : w,
       ),
     }))
   }, [])
 
-  const mutateRouteBindings = useCallback(
-    (routeId: string, mutator: (bindings: RouteProviderBinding[]) => RouteProviderBinding[]) => {
-      setState((prev) => ({
-        ...prev,
-        routes: prev.routes.map((p) => {
-          if (p.id !== routeId) return p
-          return {
-            ...p,
-            providers: reorderBindings(mutator(p.providers)),
-            updatedAt: nowIso(),
-          }
-        }),
-      }))
-    },
-    [],
-  )
-
-  const createCustomProvider = useCallback(
-    (input: CreateCustomProviderInput): ExternalProvider | { error: string } => {
+  const createCustomConnection = useCallback(
+    (input: CreateCustomConnectionInput): ExternalHttpConnection | { error: string } => {
       const name = input.name.trim()
       if (!name) return { error: 'Name is required.' }
       const http = normalizeHttpConfig(input.http)
       if (!http.url.trim()) return { error: 'URL is required.' }
 
-      const provider: ExternalProvider = {
-        id: uid('prov'),
+      const connection: ExternalHttpConnection = {
+        id: uid('conn'),
         name,
         kind: 'http',
         description: input.description?.trim() || undefined,
@@ -774,25 +725,25 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
 
       setState((prev) => ({
         ...prev,
-        providers: [...prev.providers, provider],
+        connections: [...prev.connections, connection],
       }))
-      pushActivity('provider', `Custom provider “${name}” created.`)
-      return provider
+      pushActivity('connection', `Custom connection “${name}” created.`)
+      return connection
     },
     [pushActivity],
   )
 
-  const updateCustomProvider = useCallback(
-    (id: string, patch: UpdateCustomProviderInput): { error?: string } => {
+  const updateCustomConnection = useCallback(
+    (id: string, patch: UpdateCustomConnectionInput): { error?: string } => {
       let error: string | undefined
       setState((prev) => {
-        const existing = prev.providers.find((p) => p.id === id)
+        const existing = prev.connections.find((p) => p.id === id)
         if (!existing) {
-          error = 'Provider not found.'
+          error = 'Connection not found.'
           return prev
         }
         if (existing.origin !== 'custom') {
-          error = 'Platform providers cannot be edited.'
+          error = 'Platform connections cannot be edited.'
           return prev
         }
         const name = patch.name !== undefined ? patch.name.trim() : existing.name
@@ -807,7 +758,7 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
         }
         return {
           ...prev,
-          providers: prev.providers.map((p) =>
+          connections: prev.connections.map((p) =>
             p.id === id
               ? {
                   ...p,
@@ -823,63 +774,166 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
           ),
         }
       })
-      if (!error) pushActivity('provider', 'Custom provider updated.')
+      if (!error) pushActivity('connection', 'Custom connection updated.')
       return error ? { error } : {}
     },
     [pushActivity],
   )
 
-  const deleteCustomProvider = useCallback(
+  const deleteCustomConnection = useCallback(
     (id: string): { error?: string } => {
       let error: string | undefined
       let removedName = ''
       setState((prev) => {
-        const existing = prev.providers.find((p) => p.id === id)
+        const existing = prev.connections.find((p) => p.id === id)
         if (!existing) {
-          error = 'Provider not found.'
+          error = 'Connection not found.'
           return prev
         }
         if (existing.origin !== 'custom') {
-          error = 'Platform providers cannot be deleted.'
+          error = 'Platform connections cannot be deleted.'
           return prev
         }
         removedName = existing.name
         return {
           ...prev,
-          providers: prev.providers.filter((p) => p.id !== id),
-          routes: prev.routes.map((route) => ({
-            ...route,
-            providers: reorderBindings(
-              route.providers.filter((b) => b.providerId !== id),
-            ),
-            updatedAt: nowIso(),
-          })),
+          connections: prev.connections.filter((p) => p.id !== id),
         }
       })
-      if (!error) pushActivity('provider', `Custom provider “${removedName}” removed.`)
+      if (!error) pushActivity('connection', `Custom connection “${removedName}” removed.`)
       return error ? { error } : {}
     },
     [pushActivity],
   )
 
-  const createAccount = useCallback(
-    (input: CreateAccountInput): ProviderAccount | { error: string } => {
-      const provider = state.providers.find((p) => p.id === input.providerId)
-      if (!provider) return { error: 'Provider not found.' }
-      if (provider.origin !== 'platform') {
-        return { error: 'Accounts are only for platform providers.' }
+  const createOperator = useCallback(
+    (
+      input: {
+        name: string
+        kind: OperatorKind
+        description?: string
+        config: OperatorDef['config']
+      },
+    ): OperatorDef | { error: string } => {
+      const name = input.name.trim()
+      if (!name) return { error: 'Name is required.' }
+      const configError = validateOperatorConfig(input.kind, input.config)
+      if (configError) return { error: configError }
+      const now = nowIso()
+      const operator: OperatorDef = {
+        id: uid('op'),
+        name,
+        kind: input.kind,
+        description: input.description?.trim() || undefined,
+        config: input.config,
+        createdAt: now,
+        updatedAt: now,
       }
-      if (!provider.requiresApiKey) {
-        return { error: 'This provider does not use API key accounts.' }
+      setState((prev) => ({ ...prev, operators: [...prev.operators, operator] }))
+      pushActivity('operator', `Operator “${name}” created.`)
+      return operator
+    },
+    [pushActivity],
+  )
+
+  const updateOperator = useCallback(
+    (
+      id: string,
+      patch: {
+        name?: string
+        description?: string
+        kind?: OperatorKind
+        config?: OperatorDef['config']
+      },
+    ): { error?: string } => {
+      let error: string | undefined
+      setState((prev) => {
+        const existing = prev.operators.find((o) => o.id === id)
+        if (!existing) {
+          error = 'Operator not found.'
+          return prev
+        }
+        const kind = patch.kind ?? existing.kind
+        const config = patch.config ?? existing.config
+        if (patch.name !== undefined && !patch.name.trim()) {
+          error = 'Name is required.'
+          return prev
+        }
+        const configError = validateOperatorConfig(kind, config)
+        if (configError) {
+          error = configError
+          return prev
+        }
+        return {
+          ...prev,
+          operators: prev.operators.map((o) =>
+            o.id === id
+              ? {
+                  ...o,
+                  name: patch.name?.trim() ?? o.name,
+                  description:
+                    patch.description !== undefined
+                      ? patch.description.trim() || undefined
+                      : o.description,
+                  kind,
+                  config,
+                  updatedAt: nowIso(),
+                }
+              : o,
+          ),
+        }
+      })
+      if (!error) pushActivity('operator', 'Operator updated.')
+      return error ? { error } : {}
+    },
+    [pushActivity],
+  )
+
+  const deleteOperator = useCallback(
+    (id: string): { error?: string } => {
+      let error: string | undefined
+      let removedName = ''
+      setState((prev) => {
+        const existing = prev.operators.find((o) => o.id === id)
+        if (!existing) {
+          error = 'Operator not found.'
+          return prev
+        }
+        if (collectOperatorUsages(prev.flows, id).length > 0) {
+          error = 'in_use'
+          return prev
+        }
+        removedName = existing.name
+        return { ...prev, operators: prev.operators.filter((o) => o.id !== id) }
+      })
+      if (!error) pushActivity('operator', `Operator “${removedName}” deleted.`)
+      return error ? { error } : {}
+    },
+    [pushActivity],
+  )
+
+  const findOperatorUsages = useCallback(
+    (operatorId: string): OperatorUsage[] => collectOperatorUsages(state.flows, operatorId),
+    [state.flows],
+  )
+
+  const createAccount = useCallback(    (input: CreateAccountInput): ConnectionAccount | { error: string } => {
+      const connection = state.connections.find((p) => p.id === input.connectionId)
+      if (!connection) return { error: 'Connection not found.' }
+      if (connection.origin !== 'platform') {
+        return { error: 'Accounts are only for platform connections.' }
+      }
+      if (!connection.requiresApiKey) {
+        return { error: 'This connection does not use API key accounts.' }
       }
       const name = input.name.trim()
       const apiKey = input.apiKey.trim()
       if (!name) return { error: 'Account name is required.' }
-      if (!apiKey) return { error: `${provider.credentialLabel ?? 'API key'} is required.` }
+      if (!apiKey) return { error: `${connection.credentialLabel ?? 'API key'} is required.` }
 
-      const account: ProviderAccount = {
+      const account: ConnectionAccount = {
         id: uid('acc'),
-        providerId: input.providerId,
+        connectionId: input.connectionId,
         name,
         apiKey,
         createdAt: nowIso(),
@@ -889,10 +943,10 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
         ...prev,
         accounts: [...prev.accounts, account],
       }))
-      pushActivity('account', `Connected account “${name}” added for ${provider.name}.`)
+      pushActivity('account', `Connected account “${name}” added for ${connection.name}.`)
       return account
     },
-    [pushActivity, state.providers],
+    [pushActivity, state.connections],
   )
 
   const updateAccount = useCallback(
@@ -929,11 +983,11 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
 
   const deleteAccount = useCallback(
     (id: string): { error?: string } => {
-      const inUse = state.routes.some((r) =>
-        r.providers.some((b) => b.accountId === id),
+      const inUse = state.flows.some((flow) =>
+        flow.nodes.some((node) => node.type === 'http' && node.accountId === id),
       )
       if (inUse) {
-        return { error: 'Account is attached to one or more routes. Remove those bindings first.' }
+        return { error: 'Account is attached to one or more flows. Remove it from those HTTP nodes first.' }
       }
       let removedName = ''
       setState((prev) => {
@@ -948,126 +1002,12 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
       if (removedName) pushActivity('account', `Connected account “${removedName}” removed.`)
       return {}
     },
-    [pushActivity, state.routes],
+    [pushActivity, state.flows],
   )
 
-  const accountsForProvider = useCallback(
-    (providerId: string) => state.accounts.filter((a) => a.providerId === providerId),
+  const accountsForConnection = useCallback(
+    (connectionId: string) => state.accounts.filter((a) => a.connectionId === connectionId),
     [state.accounts],
-  )
-
-  const addProviderToRoute = useCallback(
-    (routeId: string, providerId: string, accountId?: string | null): { error?: string } => {
-      const provider = state.providers.find((p) => p.id === providerId)
-      if (!provider) return { error: 'Provider not found.' }
-
-      if (provider.requiresApiKey) {
-        if (!accountId) {
-          return { error: 'Select a connected account for this provider.' }
-        }
-        const account = state.accounts.find(
-          (a) => a.id === accountId && a.providerId === providerId,
-        )
-        if (!account) return { error: 'Account not found for this provider.' }
-      }
-
-      mutateRouteBindings(routeId, (bindings) => {
-        const enabledCount = bindings.filter((b) => b.enabled).length
-        const binding: RouteProviderBinding = {
-          id: uid('bind'),
-          providerId,
-          accountId: provider.requiresApiKey ? accountId : null,
-          priority: enabledCount + 1,
-          enabled: true,
-          isDefault: bindings.filter((b) => b.enabled).length === 0,
-          maxRequests: 10000,
-          quotaPeriod: 'day',
-          usedRequests: 0,
-        }
-        return [...bindings, binding]
-      })
-      pushActivity('route_updated', 'Provider added to route.')
-      return {}
-    },
-    [mutateRouteBindings, pushActivity, state.accounts, state.providers],
-  )
-
-  const removeProviderFromRoute = useCallback(
-    (routeId: string, bindingId: string) => {
-      mutateRouteBindings(routeId, (bindings) => bindings.filter((b) => b.id !== bindingId))
-    },
-    [mutateRouteBindings],
-  )
-
-  const updateBinding = useCallback(
-    (
-      routeId: string,
-      bindingId: string,
-      patch: Partial<
-        Pick<
-          RouteProviderBinding,
-          'enabled' | 'isDefault' | 'maxRequests' | 'quotaPeriod' | 'accountId'
-        >
-      >,
-    ) => {
-      mutateRouteBindings(routeId, (bindings) => {
-        let next = bindings.map((b) => {
-          if (b.id !== bindingId) return b
-          return { ...b, ...patch }
-        })
-
-        if (patch.isDefault === true) {
-          next = next.map((b) => ({
-            ...b,
-            isDefault: b.id === bindingId && b.enabled,
-          }))
-        }
-
-        if (patch.enabled === false) {
-          next = next.map((b) => {
-            if (b.id !== bindingId) return b
-            return { ...b, enabled: false, isDefault: false }
-          })
-        }
-
-        if (patch.enabled === true) {
-          const others = next.filter((b) => b.id !== bindingId)
-          const target = next.find((b) => b.id === bindingId)
-          if (!target) return bindings
-          const enabled = others.filter((b) => b.enabled)
-          const disabled = others.filter((b) => !b.enabled)
-          const reinserted: RouteProviderBinding = {
-            ...target,
-            enabled: true,
-            priority: enabled.length + 1,
-            isDefault: enabled.length === 0 ? true : target.isDefault,
-          }
-          next = [...enabled, reinserted, ...disabled]
-        }
-
-        return next
-      })
-    },
-    [mutateRouteBindings],
-  )
-
-  const moveBinding = useCallback(
-    (routeId: string, bindingId: string, direction: 'up' | 'down') => {
-      mutateRouteBindings(routeId, (bindings) => {
-        const enabled = bindings
-          .filter((b) => b.enabled)
-          .sort((a, b) => a.priority - b.priority)
-        const disabled = bindings.filter((b) => !b.enabled)
-        const idx = enabled.findIndex((b) => b.id === bindingId)
-        if (idx < 0) return bindings
-        const swapWith = direction === 'up' ? idx - 1 : idx + 1
-        if (swapWith < 0 || swapWith >= enabled.length) return bindings
-        const copy = [...enabled]
-        ;[copy[idx], copy[swapWith]] = [copy[swapWith], copy[idx]]
-        return [...copy, ...disabled]
-      })
-    },
-    [mutateRouteBindings],
   )
 
   const value = useMemo<MockStoreValue>(
@@ -1082,44 +1022,50 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
       setTheme,
       setSidebarCollapsed,
       setMockBaseUrl,
-      createWorkspace,
-      updateWorkspace,
-      deleteWorkspace,
+      createWebhook,
+      updateWebhook,
+      updateWebhookInput,
+      updateWebhookResponse,
+      deleteWebhook,
       addAllowedClient,
       removeAllowedClient,
       createApiKey,
       regenerateApiKey,
       revokeApiKey,
-      createRoute,
-      updateRoute,
-      deleteRoute,
-      createCustomProvider,
-      updateCustomProvider,
-      deleteCustomProvider,
+      createFlow,
+      saveFlowGraph,
+      importFlow,
+      deleteFlow,
+      createCustomConnection,
+      updateCustomConnection,
+      deleteCustomConnection,
+      createOperator,
+      updateOperator,
+      deleteOperator,
+      findOperatorUsages,
       createAccount,
       updateAccount,
       deleteAccount,
-      accountsForProvider,
-      addProviderToRoute,
-      removeProviderFromRoute,
-      updateBinding,
-      moveBinding,
-      pathConflict,
-      getWorkspace: (id) => state.workspaces.find((w) => w.id === id),
-      getRoute: (id) => state.routes.find((p) => p.id === id),
-      keysForWorkspace: (workspaceId) =>
-        state.apiKeys.filter((k) => k.apiWorkspaceId === workspaceId),
-      routesForWorkspace: (workspaceId) => {
-        const ws = state.workspaces.find((w) => w.id === workspaceId)
-        if (!ws) return []
-        return ws.routeIds
-          .map((id) => state.routes.find((p) => p.id === id))
-          .filter((p): p is ApiRoute => Boolean(p))
+      accountsForConnection,
+      getWebhook: (id) => state.webhooks.find((w) => w.id === id),
+      getFlow: (id) => state.flows.find((p) => p.id === id),
+      keysForWebhook: (webhookId) =>
+        state.apiKeys.filter((k) => k.apiWebhookId === webhookId),
+      flowsForWebhook: (webhookId) => {
+        const wh = state.webhooks.find((w) => w.id === webhookId)
+        if (!wh) return []
+        return wh.flowIds
+          .map((id) => state.flows.find((p) => p.id === id))
+          .filter((p): p is HttpFlow => Boolean(p))
       },
       mockRequestsThisMonth: () =>
-        state.routes.reduce(
-          (sum, p) =>
-            sum + p.providers.reduce((s, b) => s + (b.usedRequests ?? 0), 0),
+        state.flows.reduce(
+          (sum, flow) =>
+            sum +
+            flow.nodes.reduce(
+              (inner, node) => inner + (node.type === 'http' ? node.usedRequests : 0),
+              0,
+            ),
           0,
         ),
     }),
@@ -1134,29 +1080,31 @@ export function MockStoreProvider({ children }: { children: ReactNode }) {
       setTheme,
       setSidebarCollapsed,
       setMockBaseUrl,
-      createWorkspace,
-      updateWorkspace,
-      deleteWorkspace,
+      createWebhook,
+      updateWebhook,
+      updateWebhookInput,
+      updateWebhookResponse,
+      deleteWebhook,
       addAllowedClient,
       removeAllowedClient,
       createApiKey,
       regenerateApiKey,
       revokeApiKey,
-      createRoute,
-      updateRoute,
-      deleteRoute,
-      createCustomProvider,
-      updateCustomProvider,
-      deleteCustomProvider,
+      createFlow,
+      saveFlowGraph,
+      importFlow,
+      deleteFlow,
+      createCustomConnection,
+      updateCustomConnection,
+      deleteCustomConnection,
+      createOperator,
+      updateOperator,
+      deleteOperator,
+      findOperatorUsages,
       createAccount,
       updateAccount,
       deleteAccount,
-      accountsForProvider,
-      addProviderToRoute,
-      removeProviderFromRoute,
-      updateBinding,
-      moveBinding,
-      pathConflict,
+      accountsForConnection,
     ],
   )
 

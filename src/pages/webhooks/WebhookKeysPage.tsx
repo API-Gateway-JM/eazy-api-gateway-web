@@ -7,11 +7,11 @@ import { useMockStore } from '@/store/MockStore'
 import type { ApiKey, ExpirationOption } from '@/types'
 import { COMMUNITY_MAX_KEYS } from '@/types'
 
-export function WorkspaceKeysPage() {
-  const { workspaceId = '' } = useParams()
-  const { keysForWorkspace, createApiKey, regenerateApiKey, revokeApiKey, pushToast } =
+export function WebhookKeysPage() {
+  const { webhookId = '' } = useParams()
+  const { keysForWebhook, createApiKey, regenerateApiKey, revokeApiKey, pushToast } =
     useMockStore()
-  const keys = keysForWorkspace(workspaceId)
+  const keys = keysForWebhook(webhookId)
   const activeCount = keys.filter((k) => k.status === 'active').length
 
   const [showCreate, setShowCreate] = useState(false)
@@ -22,7 +22,7 @@ export function WorkspaceKeysPage() {
 
   function onCreate(e: FormEvent) {
     e.preventDefault()
-    const result = createApiKey({ workspaceId, name, expiration })
+    const result = createApiKey({ webhookId, name, expiration })
     if ('error' in result) return
     setShowCreate(false)
     setFreshKey(result)

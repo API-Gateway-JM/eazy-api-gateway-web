@@ -1,14 +1,14 @@
 import { Link } from 'react-router-dom'
 import { formatDate } from '@/lib/ids'
 import { useMockStore } from '@/store/MockStore'
-import { COMMUNITY_MAX_WORKSPACES } from '@/types'
+import { COMMUNITY_MAX_WEBHOOKS } from '@/types'
 
 /** Demo success rate for the week (alerts / fail tracking not wired yet). */
 const SUCCESS_RATE_THIS_WEEK = 98
 
 export function DashboardPage() {
   const { state, mockRequestsThisMonth } = useMockStore()
-  const routes = state.routes.length
+  const flows = state.flows.length
   const successfulRequestsThisWeek = mockRequestsThisMonth()
   const sentAlerts = 0
 
@@ -17,25 +17,25 @@ export function DashboardPage() {
       <div className="page-header">
         <div>
           <h1>Dashboard</h1>
-          <p>Manage API Workspaces, keys, and routes on a unified gateway path.</p>
+          <p>Manage Webhooks, keys, and flows on a unified gateway path.</p>
         </div>
-        <Link to="/workspaces/new" className="btn btn-primary">
-          New workspace
+        <Link to="/webhooks/new" className="btn btn-primary">
+          New webhook
         </Link>
       </div>
 
       <div className="grid-cards">
         <div className="card">
-          <h3>API Workspaces</h3>
+          <h3>Webhooks</h3>
           <div className="stat">
-            {state.workspaces.length}/{COMMUNITY_MAX_WORKSPACES}
+            {state.webhooks.length}/{COMMUNITY_MAX_WEBHOOKS}
           </div>
           <p className="muted">Community limit</p>
         </div>
         <div className="card">
-          <h3>Routes</h3>
-          <div className="stat">{routes}</div>
-          <p className="muted">Custom gateway paths</p>
+          <h3>Flows</h3>
+          <div className="stat">{flows}</div>
+          <p className="muted">Pipelines in this demo</p>
         </div>
         <div className="card">
           <h3>Weekly requests</h3>
